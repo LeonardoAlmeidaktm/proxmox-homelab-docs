@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: tailscale_pve
+    hostname: pve-node
+    network_mode: "host"
+    capabilities:
+      add:
+        - NET_ADMIN
+        - NET_RAW
+    volumes:
+      - /var/lib/tailscale:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - TS_ROUTES=192.168.18.0/24
+    restart: unless-stopped
+
