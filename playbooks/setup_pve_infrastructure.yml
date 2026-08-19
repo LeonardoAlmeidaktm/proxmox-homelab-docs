@@ -1,30 +1,42 @@
 ---
-- name: Infraestrutura Proxmox VE - Configuração de Discos (NVMe + HDD 1TB)
-  hosts: localhost
-  connection: local
-  gather_facts: false
-  vars:
-    fast_storage_nvme: "local-lvm"
-    bulk_storage_hdd: "storage-1tb"
-    container_id: 100
-    vm_id: 101
-    container_ip: "192.168.18.160/24"
-    container_gw: "192.168.18.1"
+- name: Infraestrutura Proxmox VE - Disaster Recovery
+hosts: pve_node
+gather_facts: false
+vars:
+# Storages mapeados
+fast_storage_nvme: "local-lvm"  # NVMe Baremetal (SO, VMs e Containers)
+bulk_storage_hdd: "storage-1tb"  # HD 1TB (Armazenamento bruto e backups)
 
-  tasks:
-    - name: Criar Container LXC 100 para o aaPanel no NVMe
-      ansible.builtin.command: >
-        pct create {{ container_id }} local:vztmpl/debian-12-standard_12.12-1_amd64.tar.zst
-        --ostype debian
-        --hostname aapanel
-        --cores 2
-        --memory 2048
-        --swap 1024
-        --rootfs {{ fast_storage_nvme }}:15
-        --net0 name=eth0,bridge=vmbr0,ip={{ container_ip }},gw={{ container_gw }}
-        --nameserver 1.1.1.1,8.8.8.8
-        --unprivileged 0
-        --onboot 1
-      args:
-        creates: "/etc/pve/lxc/{{ container_id }}.conf"
+# Identificadores de Rede e CT/VM
+container_id: 100
+vm_id: 101
+container_ip: "192.168.18.160/24"
+container_gw: "192.168.18.1"
+lxc_template: "local:vztmpl/debian-12-standard_12.12-1_amd64.tar.zst"
 
+tasks:
+- name: Garantir que o storage local aceita ISOs e Templates
+  ansible.builtin.command: pvesm set local --content iso,vztmpl,backup
+  changed_when: false
+
+- name: Criar Container LXC 100 para o aaPanel no NVMe
+  ansible.builtin.command: >
+    pct create {{ container_id }} {{ lxc_template }}
+    --ostype debian
+    --hostname aapanel
+    --cores 2
+    --memory 2048
+    --swap 1024
+    --rootfs {{ fast_storage_nvme }}:15
+    --net0 name=eth0,bridge=vmbr0,ip={{ container_ip }},gw={{ container_gw }}
+    --nameserver 1.1.1.1,8.8.8.8
+    --unprivileged 0
+    --onboot 1
+  args:
+    creates: "/etc/pve/lxc/{{ container_id }}.conf"
+
+- name: Montar volume do HD de 1TB no Container do aaPanel
+  ansible.builtin.command: >
+    pct set {{ container_id }} --mp0 {{ bulk_storage_hdd }}:100,mp=/www/wwwroot/downloads
+  args:
+    creates: "/etc/pve/lxc/{{ container_id }}.conf"
